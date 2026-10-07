@@ -16,6 +16,7 @@
 #include "bt.h"
 #include "capture.h"
 #include "log.h"
+#include "session_lock.h"
 
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -32,46 +33,21 @@
 #define LOCK_PATH STATE_DIR "/playpods.lock"
 #define KEY_PATH  STATE_DIR "/headset.key"
 
-/* How stale the lock must be before another copy claims it. The running
- * payload refreshes it every second, so anything older belongs to a copy that
- * ended without cleaning up. */
-#define LOCK_STALE_SECONDS 15
-
-/* Refuses to start when another copy is already running: two copies would
- * fight over the same controller and each take the other's events. */
-static int lock_take(void)
-{
-    struct stat stv;
-    int fd;
-
-    if (stat(LOCK_PATH, &stv) == 0 &&
-        time(NULL) - stv.st_mtime < LOCK_STALE_SECONDS)
-        return 0;
-
-    fd = open(LOCK_PATH, O_RDWR | O_CREAT | O_TRUNC, 0644);
-    if (fd < 0) return 0;
-    close(fd);
-    return 1;
-}
-
-static void lock_refresh(void) { utimes(LOCK_PATH, NULL); }
-static void lock_release(void) { unlink(LOCK_PATH); }
-
 int main(void)
 {
-    int capturing, streamed = 0;
+    int capturing, streamed = 0, lock_fd = -1, locked;
 
     if (!log_open(STATE_DIR, LOG_PATH)) return 1;
     log_line("========================================");
     log_line("FGG-PlayPods %s", VERSION);
 
-    if (!lock_take()) {
-        log_line("another copy is already running");
-        notify("FGG-PlayPods: already running");
+    locked = session_lock_take(LOCK_PATH, &lock_fd);
+    if (locked != 1) {
+        notify(locked == 0 ? "FGG-PlayPods: already running" :
+               "FGG-PlayPods: cannot acquire session lock - see the log");
         log_close();
         return 1;
     }
-    bt_set_tick(lock_refresh);
 
     /* Capture first: if it cannot work, Bluetooth is never touched. */
     capturing = capture_open();
@@ -99,7 +75,7 @@ int main(void)
 
 out:
     log_line("FGG-PlayPods done");
-    lock_release();
+    session_lock_release(&lock_fd);
     log_close();
     return 0;
 }
