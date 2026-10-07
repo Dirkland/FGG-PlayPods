@@ -9,7 +9,9 @@ PS5_PORT ?= 9021
 ifdef PS5_PAYLOAD_SDK
     include $(PS5_PAYLOAD_SDK)/toolchain/prospero.mk
 else
+    ifneq ($(MAKECMDGOALS),check-offline)
     $(error PS5_PAYLOAD_SDK is undefined)
+    endif
 endif
 
 ELF   := fgg-playpods.elf
@@ -24,7 +26,7 @@ SRCS     := src/main.c src/capture.c src/hci.c src/bt.c src/sdp.c src/a2dp.c src
 SBC_SRCS := third_party/sbc/sbc.c third_party/sbc/sbc_primitives.c
 OBJS     := $(patsubst %.c,$(BUILD)/%.o,$(SRCS) $(SBC_SRCS))
 
-.PHONY: all clean test
+.PHONY: all clean test check-offline
 
 all: $(ELF)
 
@@ -41,6 +43,19 @@ $(BUILD)/src/%.o: src/%.c
 
 test: $(ELF)
 	$(PS5_DEPLOY) -h $(PS5_HOST) -p $(PS5_PORT) $^
+
+# This target builds Linux test executables; it never invokes PS5_DEPLOY.
+HOST_CC ?= gcc
+HOST_TEST_FLAGS := -std=c11 -D_DEFAULT_SOURCE -Wall -Wextra -Werror -g \
+                   -fsanitize=address,undefined -fno-omit-frame-pointer
+check-offline:
+	@mkdir -p $(BUILD)/offline
+	$(HOST_CC) $(HOST_TEST_FLAGS) tests/bt_bounds_test.c src/sdp.c -o $(BUILD)/offline/bt_bounds_test
+	$(HOST_CC) $(HOST_TEST_FLAGS) tests/sdp_bounds_test.c -o $(BUILD)/offline/sdp_bounds_test
+	$(HOST_CC) $(HOST_TEST_FLAGS) -ffunction-sections -fdata-sections -Ithird_party/sbc tests/a2dp_bounds_test.c -Wl,--gc-sections -o $(BUILD)/offline/a2dp_bounds_test
+	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/bt_bounds_test
+	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/sdp_bounds_test
+	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/a2dp_bounds_test
 
 clean:
 	rm -rf $(BUILD) $(ELF)

@@ -83,8 +83,11 @@ static int de_header(const unsigned char *p, int avail, int *type, int *clen)
     if (idx == 5) { if (avail < 2) return 0; *clen = p[1]; return 2 + *clen <= avail ? 2 : 0; }
     if (idx == 6) { if (avail < 3) return 0; *clen = (int)be16(p + 1); return 3 + *clen <= avail ? 3 : 0; }
     if (avail < 5) return 0;
-    *clen = (int)be32(p + 1);
-    return 5 + *clen <= avail ? 5 : 0;
+    /* Compare as unsigned before narrowing or adding the header length. */
+    unsigned content = be32(p + 1);
+    if (content > (unsigned)(avail - 5)) return 0;
+    *clen = (int)content;
+    return 5;
 }
 
 /* Does the pattern (a sequence of UUIDs) name anything this record offers?
