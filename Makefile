@@ -22,7 +22,7 @@ CFLAGS     := -std=c11 -Wall -Wextra -Werror -O2 -Isrc -Ithird_party/sbc
 # warning policy.
 SBC_CFLAGS := -std=gnu11 -O2 -w -Ithird_party/sbc
 
-SRCS     := src/main.c src/capture.c src/hci.c src/bt.c src/sdp.c src/a2dp.c src/log.c
+SRCS     := src/main.c src/capture.c src/hci.c src/bt.c src/sdp.c src/a2dp.c src/log.c src/session_lock.c
 SBC_SRCS := third_party/sbc/sbc.c third_party/sbc/sbc_primitives.c
 OBJS     := $(patsubst %.c,$(BUILD)/%.o,$(SRCS) $(SBC_SRCS))
 
@@ -53,9 +53,13 @@ check-offline:
 	$(HOST_CC) $(HOST_TEST_FLAGS) tests/bt_bounds_test.c src/sdp.c -o $(BUILD)/offline/bt_bounds_test
 	$(HOST_CC) $(HOST_TEST_FLAGS) tests/sdp_bounds_test.c -o $(BUILD)/offline/sdp_bounds_test
 	$(HOST_CC) $(HOST_TEST_FLAGS) -ffunction-sections -fdata-sections -Ithird_party/sbc tests/a2dp_bounds_test.c -Wl,--gc-sections -o $(BUILD)/offline/a2dp_bounds_test
+	$(HOST_CC) $(HOST_TEST_FLAGS) -Itests/stubs tests/capture_test.c -o $(BUILD)/offline/capture_test
+	$(HOST_CC) $(HOST_TEST_FLAGS) tests/session_lock_test.c -o $(BUILD)/offline/session_lock_test
 	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/bt_bounds_test
 	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/sdp_bounds_test
 	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/a2dp_bounds_test
+	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/capture_test
+	ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 $(BUILD)/offline/session_lock_test
 
 clean:
 	rm -rf $(BUILD) $(ELF)
