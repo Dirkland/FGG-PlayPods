@@ -79,6 +79,7 @@ static void *resolve(int mod, const char *nid, const char *name)
 static int start_capture(void)
 {
     static int last_err;
+    static const char *last_what;
     open_param param;
     const char *what;
     int r;
@@ -107,13 +108,19 @@ static int start_capture(void)
 
     g_started = 1;
     last_err = 0;
+    last_what = NULL;
     log_line("capture: running, %d Hz stereo", CAPTURE_RATE);
     return 1;
 
 fail:
-    if (r != last_err)
-        log_line("capture: %s -> %#x, not available yet", what, (unsigned)r);
+    if (!last_what || strcmp(what, last_what) || r != last_err) {
+        if (r >= 0)
+            log_line("capture: OpenAudio returned success without a handle");
+        else
+            log_line("capture: %s -> %#x, not available yet", what, (unsigned)r);
+    }
     last_err = r;
+    last_what = what;
     capture_close();
     return 0;
 }
@@ -153,6 +160,10 @@ int capture_read(float *buf, size_t size)
     int r;
 
     if (!g_started) return -1;
+    if (!buf || size < sizeof(float) * CAPTURE_CHANNELS) {
+        log_line("capture: invalid read buffer");
+        return -1;
+    }
     r = p_read_audio(g_handle, buf, size, info, READ_NOWAIT);
     if (r == (int)ERR_EMPTY) return 0;
     if (r == (int)ERR_OVERRUN) {
@@ -168,6 +179,10 @@ int capture_read(float *buf, size_t size)
         log_line("capture: ReadAudio -> %#x", (unsigned)r);
         return -1;
     }
+    if ((size_t)r > size || (size_t)r % (sizeof(float) * CAPTURE_CHANNELS)) {
+        log_line("capture: invalid ReadAudio length %d for %zu-byte buffer", r, size);
+        return -1;
+    }
     return r;
 }
 
@@ -179,9 +194,16 @@ int capture_restart(void)
 
 void capture_close(void)
 {
-    if (g_started) p_stop(g_handle);
-    if (g_handle) p_close(g_handle);
-    if (g_initialized) p_terminate();
+    void *handle = g_handle;
+    int started = g_started, initialized = g_initialized, r;
+    /* Consume each owned resource once even when native cleanup fails.
+     * A failed close has an uncertain outcome; retrying it is unsafe. */
     g_started = g_initialized = 0;
     g_handle = NULL;
+    if (started && (r = p_stop(handle)) < 0)
+        log_line("capture: cleanup Stop -> %#x; outcome uncertain", (unsigned)r);
+    if (handle && (r = p_close(handle)) < 0)
+        log_line("capture: cleanup Close -> %#x; outcome uncertain", (unsigned)r);
+    if (initialized && (r = p_terminate()) < 0)
+        log_line("capture: cleanup Terminate -> %#x; outcome uncertain", (unsigned)r);
 }
