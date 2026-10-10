@@ -23,7 +23,8 @@
 int  capture_open(void);
 
 /* Reads one record without waiting. Returns its size in bytes, 0 when none
- * is ready, or -1 when the service ended the capture (restart it). */
+ * is ready, or -1 on a service error or invalid buffer/returned length.
+ * Positive sizes fit the supplied buffer and contain whole stereo frames. */
 int  capture_read(float *buf, size_t size);
 
 /* Tears the session down and starts a new one. Returns 1 when capturing. */

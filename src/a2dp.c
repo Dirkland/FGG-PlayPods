@@ -22,6 +22,7 @@
 #define AVDTP_CLOSE             0x08
 
 #define RTP_HEADER      13      /* RTP header and the SBC frame count */
+#define MEDIA_PACKET_BYTES 1024
 #define MAX_BITPOOL     53      /* the usual "high quality" SBC setting */
 
 /* The queue between capture and encoder, and how late it may run: more
@@ -294,7 +295,10 @@ static int frames_that_fit(size_t framelen)
 {
     int room = (int)g_media.remote_mtu, n;
 
+    if (framelen == 0 || framelen > MEDIA_PACKET_BYTES - RTP_HEADER) return 0;
+    if (room > MEDIA_PACKET_BYTES) room = MEDIA_PACKET_BYTES;
     if (bt_max_frame() - 4 < room) room = bt_max_frame() - 4;
+    if (room <= RTP_HEADER) return 0;
     n = (room - RTP_HEADER) / (int)framelen;
     return n > 15 ? 15 : n;
 }
@@ -314,7 +318,7 @@ int a2dp_stream(int capturing)
     long max_lag = (long)sc->rate * MAX_LAG_MS / 1000;
     long keep_lag = (long)sc->rate * KEEP_LAG_MS / 1000;
     uint16_t seq = 1;
-    unsigned char pkt[1024];
+    unsigned char pkt[MEDIA_PACKET_BYTES];
 
     if (sbc_init(&sbc, 0) != 0) {
         log_line("sbc: init failed");

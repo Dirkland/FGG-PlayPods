@@ -247,7 +247,9 @@ int bt_send(unsigned dcid, const unsigned char *data, int len)
 {
     unsigned char pkt[HCI_PKT_MAX];
 
-    if (8 + len > (int)sizeof pkt || (g_acl_mtu && 4 + len > (int)g_acl_mtu)) {
+    if (len < 0 || len > (int)sizeof pkt - 8 ||
+        (len > 0 && !data) ||
+        (g_acl_mtu && (unsigned)len + 4 > g_acl_mtu)) {
         log_line("l2cap: %d-byte frame too large to send unfragmented", len);
         return 0;
     }
@@ -255,7 +257,7 @@ int bt_send(unsigned dcid, const unsigned char *data, int len)
     put16(pkt + 2, (unsigned)(4 + len));
     put16(pkt + 4, (unsigned)len);
     put16(pkt + 6, dcid);
-    memcpy(pkt + 8, data, (size_t)len);
+    if (len > 0) memcpy(pkt + 8, data, (size_t)len);
     if (!hci_acl_send(pkt, 8 + len)) return 0;
     g_credits--;
     g_sent++;
@@ -266,8 +268,12 @@ int bt_send(unsigned dcid, const unsigned char *data, int len)
 static int sig_send(unsigned char code, unsigned char id,
                     const unsigned char *data, int len)
 {
-    unsigned char p[128];
+    unsigned char p[HCI_PKT_MAX - 8];
 
+    if (len < 0 || len > (int)sizeof p - 4 || (len > 0 && !data)) {
+        log_line("l2cap: signaling response of %d bytes exceeds its buffer", len);
+        return 0;
+    }
     p[0] = code;
     p[1] = id;
     put16(p + 2, (unsigned)len);
@@ -309,6 +315,31 @@ static void on_inquiry_record(const unsigned char *r, const unsigned char *eir,
 static void on_event(const unsigned char *ev, int len)
 {
     unsigned char p[32];
+    int minimum = 2;
+
+    if (len < 2 || len != 2 + ev[1]) return;
+    switch (ev[0]) {
+    case 0x01: minimum = 3; break;
+    case 0x22:
+        if (len < 3) return;
+        minimum = 3 + 14 * ev[2]; break;
+    case 0x2F: minimum = 17; break;
+    case 0x04: minimum = 12; break;
+    case 0x03: minimum = 13; break;
+    case 0x05: case 0x08: case 0x0E: case 0x0F: minimum = 6; break;
+    case 0x06: minimum = 5; break;
+    case 0x13:
+        if (len < 3) return;
+        minimum = 3 + 4 * ev[2]; break;
+    case 0x16: case 0x17: case 0x31: minimum = 8; break;
+    case 0x18: minimum = 25; break;
+    case 0x33: minimum = 12; break;
+    default: break;
+    }
+    if (len < minimum) {
+        log_line("hci: truncated event %#04x (%d bytes)", ev[0], len);
+        return;
+    }
 
     switch (ev[0]) {
     case 0x01:  /* Inquiry Complete */
@@ -471,9 +502,31 @@ static void on_signaling(const unsigned char *d, int len)
         const unsigned char *c = d + 4;
         unsigned char r[16];
         l2cap_chan *ch;
-        int i;
+        int i, minimum = 0;
 
         if (4 + clen > len) break;
+        switch (code) {
+        case 0x02: case 0x04: case 0x06: case 0x07: minimum = 4; break;
+        case 0x03: minimum = 8; break;
+        case 0x05: minimum = 6; break;
+        case 0x0A: minimum = 2; break;
+        default: break;
+        }
+        if (clen < minimum) {
+            log_line("l2cap: truncated signaling command %#04x (%d bytes)", code, clen);
+            return;
+        }
+        if (code == 0x04) {
+            /* Validate every option before changing channel state. */
+            for (i = 4; i < clen; ) {
+                if (clen - i < 2 || c[i + 1] > clen - i - 2) {
+                    log_line("l2cap: truncated configuration option");
+                    return;
+                }
+                if ((c[i] & 0x7F) == 0x01 && c[i + 1] != 2) return;
+                i += 2 + c[i + 1];
+            }
+        }
 
         switch (code) {
         case 0x02:  /* Connection Request from the headset */
@@ -598,13 +651,16 @@ static void on_l2cap_frame(unsigned cid, const unsigned char *d, int len)
 
 static void on_acl(const unsigned char *pkt, int len)
 {
-    unsigned hdr = le16(pkt);
-    int pb = (int)((hdr >> 12) & 3);
-    int dlen = (int)le16(pkt + 2);
-    const unsigned char *d = pkt + 4;
+    unsigned hdr;
+    int pb, dlen;
+    const unsigned char *d;
 
-    if (g_conn_done && (hdr & 0x0FFF) != g_handle) return;     /* not ours */
-    if (4 + dlen > len) return;
+    if (len < 4 || !is_ours_handle(pkt)) return;
+    hdr = le16(pkt);
+    pb = (int)((hdr >> 12) & 3);
+    dlen = (int)le16(pkt + 2);
+    d = pkt + 4;
+    if (dlen != len - 4) return;
 
     if (pb == 1) {                              /* continuation */
         if (g_l2need == 0) return;
@@ -616,6 +672,10 @@ static void on_acl(const unsigned char *pkt, int len)
         g_l2len += dlen;
     } else {                                    /* start of an L2CAP frame */
         if (dlen < 4 || dlen > (int)sizeof g_l2buf) return;
+        if (le16(d) > sizeof g_l2buf - 4) {
+            g_l2need = 0;
+            return;
+        }
         memcpy(g_l2buf, d, (size_t)dlen);
         g_l2len = dlen;
         g_l2need = 4 + (int)le16(d);
@@ -691,6 +751,10 @@ static int setup_controller(void)
     unsigned char name[248];
 
     if (!hci_sync(OP_READ_BUFFER_SIZE, NULL, 0)) return 0;
+    if (g_cc_len < 13) {
+        log_line("controller: truncated Read Buffer Size response (%d bytes)", g_cc_len);
+        return 0;
+    }
     g_acl_mtu = le16(g_cc + 6);
     g_credits = g_credits_max = (int)le16(g_cc + 9);
     log_line("controller: %d ACL buffers of %u bytes", g_credits, g_acl_mtu);
