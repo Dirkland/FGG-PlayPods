@@ -1,6 +1,6 @@
 # RFC: guarded headset startup and one resident reconnect
 
-This review candidate preserves the working local B1 audio policy and includes message/packet bounds, session locking and capture error reporting. It is a separate branch based on upstream `0d35e17635bf14a685f84d64c1f897b01485afa9`, not a third incremental patch to apply after the two small fixes. Original FGG-PlayPods attribution, GPLv3 license and vendored codec remain unchanged.
+This review candidate preserves the working local B1 audio policy and includes message/packet bounds, session locking and capture error reporting. It originally branched from upstream `0d35e17635bf14a685f84d64c1f897b01485afa9`. It now incorporates upstream `4b4ddb5` after the focused bounds and capture/session patches were accepted. The merged upstream fixes and their tests are retained; the remaining diff is the experimental resident RFC and its validation/documentation. Original FGG-PlayPods attribution, GPLv3 license and vendored codec remain unchanged.
 
 The owner reports the current milestone works well with PS5 firmware **12.40**, a **Jabra Evolve2 75** and wireless DualSense input. Reliable ordinary startup remains unresolved. The producer documents firmware 11.60 and an Xbox Wireless Headset; these are different validation conditions, and neither set establishes universal compatibility.
 
@@ -25,6 +25,14 @@ A subsequent B1 startup failed on an existing-link result with handle zero. The 
 
 Shared raw USB reads may consume events intended for the system driver. Filtering foreign traffic after receipt cannot return it. The RFC stops on recognized foreign command replies, but that guard does not prove noninterference, native driver restoration or flawless wireless coexistence. Firmware layout/API assumptions, long gameplay, game startup versus already-running capture, repeated startup/reconnect, lock reuse after exit, and cleanup after native failures remain hardware questions. Do not introduce driver detach/reset, guessed lookup tuples or destructive failure injection based on this RFC.
 
+## Later B1 failure — 2026-10-08
+
+The earlier successful cycle is preserved above. A later run of the same installed B1 profile had stuttering followed by complete audio loss. The owner confirmed the wireless DualSense disconnected at the same time. Authentication/encryption and stream setup succeeded; the log reports 141 seconds and 7,294 media packets before termination.
+
+USB send waits reached 93 ms, and one late five-second interval delivered only 108 media packets (21.6/s against about 53.57/s required). Capture overruns rose from the single startup overrun to 13. The terminal line was `coexistence: foreign command reply op=0x080d status=0x02; stopping audio, controller recovery unverified`. The sticky guard made passive reconnect ineligible. Cleanup attempted one disconnect but observed no completion event, leaving its outcome uncertain.
+
+The counters support output starvation before the stop, and the guard explains the audio exit. They do not establish why USB completion slowed or whether native activity, cleanup or another transport fault caused controller loss. Command ownership is classified by the payload's opcode allowlist, not independently established. Zero USB timeouts/failures and continued submissions do not establish adequate delivery or safe shared-controller operation. This run fails sustained audio/wireless-input acceptance; neither the fallback nor shared-reader architecture is a demonstrated production fix. Raw logs and peer identifiers remain private.
+
 ## Offline checks and compilation
 
 On Linux with GCC, Python 3, ASan and UBSan:
@@ -33,7 +41,7 @@ On Linux with GCC, Python 3, ASan and UBSan:
 make check-offline
 ```
 
-This executes 63 host invocations against the actual source using mocked Bluetooth/USB/time/capture/encoder calls: transaction reply windows, signaling collisions, authentication boundaries, disconnect ownership, terminal faults, startup guidance, one-reconnect gates, main lifecycle, output-idle checks, both USB OUT-wait receive-rearm policies, completion accounting, active mode and continuous streaming beyond ten simulated minutes. It cannot measure radio interoperability, codec fidelity, native capture timing or input responsiveness. Results and source hashes are written under `build/resident-offline/`.
+This runs the five accepted upstream bounds/capture/lock suites and 63 resident host invocations against the actual source using mocked Bluetooth/USB/time/capture/encoder calls: transaction reply windows, signaling collisions, authentication boundaries, disconnect ownership, terminal faults, startup guidance, one-reconnect gates, main lifecycle, output-idle checks, both USB OUT-wait receive-rearm policies, completion accounting, active mode and continuous streaming beyond ten simulated minutes. It cannot measure radio interoperability, codec fidelity, native capture timing or input responsiveness. Results and source hashes are written under `build/resident-offline/`.
 
 With an extracted SDK and matching LLVM tools, compile only:
 
@@ -48,4 +56,4 @@ The normalized candidate compiles with warnings as errors. [Object comparison](o
 
 ## Review decisions requested
 
-Review the small bounds and capture/session patches separately first. For this RFC, assess whether the explicit 60 ms fallback and shared-reader architecture are acceptable, how to establish existing-link ownership, and how to integrate one resident reconnect without overstating restoration or reliability. The standalone source is supplied for review; this is not a release recommendation.
+The small bounds and capture/session patches have been accepted upstream and are included as merge ancestry. For this RFC, assess whether the explicit 60 ms fallback and shared-reader architecture are acceptable, how to establish existing-link ownership, and how to integrate one resident reconnect without overstating restoration or reliability. The RFC source is supplied for review; this is not a release recommendation.

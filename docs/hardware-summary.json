@@ -59,7 +59,34 @@
     "Post-reconnect fidelity and wireless input not separately reconfirmed",
     "Long gameplay, repeated startup and native restoration not established",
     "Timer-based reuse does not prove physical buffer availability",
-    "Normalized RFC binary not hardware-tested"
+    "Normalized RFC binary not hardware-tested",
+    "Later B1 run stuttered and ended with simultaneous reported audio/controller loss; cleanup disconnect was not confirmed"
   ],
-  "working_artifact_sha256": "1113b53a0901d1a285cf4430add9299af276df91754c55924d8466fe7fbf1466"
+  "working_artifact_sha256": "1113b53a0901d1a285cf4430add9299af276df91754c55924d8466fe7fbf1466",
+  "later_failure_follow_up": {
+    "date": "2026-10-08",
+    "profile": "1.0-local-residentwaitb1",
+    "owner_observations": [
+      "Stuttering before complete audio loss",
+      "Wireless DualSense disconnected at the same time"
+    ],
+    "reported_stream_seconds": 141,
+    "stream_packets": 7294,
+    "usb_wait_max_ms": 93,
+    "late_five_second_packets": 108,
+    "late_packet_rate_per_second": 21.6,
+    "capture_overruns_initial": 1,
+    "capture_overruns_final": 13,
+    "terminal_guard": {
+      "opcode": "0x080d",
+      "status": "0x02",
+      "classification": "foreign command reply; native ownership not independently established"
+    },
+    "passive_reconnect_eligible": false,
+    "cleanup_disconnect_attempts": 1,
+    "cleanup_disconnect_observed": false,
+    "assessment": "Fails sustained audio and wireless input acceptance; cause of USB slowdown and controller loss unresolved",
+    "console_times": "Unsynchronized with receipt UTC; elapsed stream time is log-reported",
+    "raw_logs": "Private; no raw peer identifiers published"
+  }
 }
