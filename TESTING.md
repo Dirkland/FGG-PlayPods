@@ -12,7 +12,7 @@ The accepted capture parameters, capture error reporting and descriptor-lock imp
 
 The 63 invocations cover signaling transactions/collisions, authentication boundaries, ownership, terminal faults, startup guidance, one-reconnect gates, main lifecycle, output-idle handling, both receive-rearm policies, completion accounting, active mode and continuous streaming beyond ten simulated minutes. Detailed results and source hashes are written to `build/resident-offline/`.
 
-The RFC changes Bluetooth transport/lifecycle behavior relative to upstream; see [the RFC](docs/RESIDENT-AUDIO-RFC.md) and [hardware summary](docs/hardware-summary.json). These mocks cannot establish radio interoperability, physical buffer availability, native-driver noninterference, audible quality or wireless controller safety. The later B1 stutter and simultaneous audio/controller disconnect remain unresolved.
+The RFC changes Bluetooth transport/lifecycle behavior relative to upstream; see [the RFC](docs/RESIDENT-AUDIO-RFC.md) and [hardware summary](docs/hardware-summary.json). These mocks cannot establish radio interoperability, physical buffer availability, native-driver noninterference, audible quality or wireless controller safety.
 
 ## Compile only
 

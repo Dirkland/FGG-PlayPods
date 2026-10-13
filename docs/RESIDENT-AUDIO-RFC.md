@@ -25,14 +25,6 @@ A subsequent B1 startup failed on an existing-link result with handle zero. The 
 
 Shared raw USB reads may consume events intended for the system driver. Filtering foreign traffic after receipt cannot return it. The RFC stops on recognized foreign command replies, but that guard does not prove noninterference, native driver restoration or flawless wireless coexistence. Firmware layout/API assumptions, long gameplay, game startup versus already-running capture, repeated startup/reconnect, lock reuse after exit, and cleanup after native failures remain hardware questions. Do not introduce driver detach/reset, guessed lookup tuples or destructive failure injection based on this RFC.
 
-## Later B1 failure — 2026-10-08
-
-The earlier successful cycle is preserved above. A later run of the same installed B1 profile had stuttering followed by complete audio loss. The owner confirmed the wireless DualSense disconnected at the same time. Authentication/encryption and stream setup succeeded; the log reports 141 seconds and 7,294 media packets before termination.
-
-USB send waits reached 93 ms, and one late five-second interval delivered only 108 media packets (21.6/s against about 53.57/s required). Capture overruns rose from the single startup overrun to 13. The terminal line was `coexistence: foreign command reply op=0x080d status=0x02; stopping audio, controller recovery unverified`. The sticky guard made passive reconnect ineligible. Cleanup attempted one disconnect but observed no completion event, leaving its outcome uncertain.
-
-The counters support output starvation before the stop, and the guard explains the audio exit. They do not establish why USB completion slowed or whether native activity, cleanup or another transport fault caused controller loss. Command ownership is classified by the payload's opcode allowlist, not independently established. Zero USB timeouts/failures and continued submissions do not establish adequate delivery or safe shared-controller operation. This run fails sustained audio/wireless-input acceptance; neither the fallback nor shared-reader architecture is a demonstrated production fix. Raw logs and peer identifiers remain private.
-
 ## Offline checks and compilation
 
 On Linux with GCC, Python 3, ASan and UBSan:
